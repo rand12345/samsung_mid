@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         TargetIndoorTemp,
     ] {
         device.read(val).await?;
-        delay_ms(10).await;
+        // delay_ms(10).await;
     }
 
     println!("data: {:#?}", device.pump);
