@@ -37,7 +37,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         TargetIndoorTemp,
     ] {
         device.read(val).await?;
-        // delay_ms(10).await;
     }
 
     println!("data: {:#?}", device.pump);
@@ -53,6 +52,7 @@ struct Device {
 
 impl Device {
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
+        delay_ms(10).await;
         print!("Reading a sensor value {val:?}... ");
         let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
         println!("Sensor value is: {rsp:?} for {val:?}");
