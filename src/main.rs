@@ -1,5 +1,9 @@
+use tokio::time::{sleep, Duration};
 use tokio_modbus::{client::Context, prelude::Reader};
 
+async fn delay_ms(dur: u64) {
+    sleep(Duration::from_millis(dur)).await;
+}
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use tokio_serial::SerialStream;
@@ -31,6 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         TargetIndoorTemp,
     ] {
         device.read(val).await?;
+        delay_ms(100).await;
     }
 
     Ok(())
