@@ -50,7 +50,7 @@ struct Device {
 impl Device {
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
         println!("Reading a sensor value {val:?}");
-        let rsp = self.bus.read_holding_registers(val as u16, 2).await?;
+        let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
         println!("Sensor value is: {rsp:?} for {:?}", ReadReg::FlowRate);
         Ok(())
     }
