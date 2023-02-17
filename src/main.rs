@@ -1,3 +1,4 @@
+use tokio::io::AsyncBufReadExt;
 use tokio::time::{sleep, Duration};
 use tokio_modbus::{client::Context, prelude::Reader};
 
@@ -18,29 +19,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .timeout(Duration::from_millis(100));
     let port = SerialStream::open(&builder).unwrap();
     let ctx = rtu::connect_slave(port, slave).await?;
+
     let mut device = Device {
         pump: Pump::default(),
         bus: ctx,
     };
-    use ReadReg::*;
-    for val in [
-        FlowRate,
-        // ThreeWay,
-        DhwTemp,
-        ReturnTemp,
-        FlowTemp,
-        TargetFlowTemp,
-        DhwStatus,
-        TargetDwhTemp,
-        ChStatus,
-        IndoorTemp,
-        TargetIndoorTemp,
-    ] {
-        device.read(val).await?;
-    }
+    device.looper().await?;
 
-    println!("data: {:#?}", device.pump);
+    Ok(())
+}
 
+async fn do_some_work(task_name: &str) -> Result<(), MyError> {
+    println!("This is task {}, doing some work", task_name);
+    let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
+    let mut buffer = Vec::new();
+
+    let fut = reader.read_until(b'\n', &mut buffer).await;
+    println!("Input was: {:?}", buffer);
     Ok(())
 }
 
@@ -51,6 +46,27 @@ struct Device {
 }
 
 impl Device {
+    async fn looper(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        loop {
+            use ReadReg::*;
+            for val in [
+                FlowRate,
+                // ThreeWay,
+                DhwTemp,
+                ReturnTemp,
+                FlowTemp,
+                TargetFlowTemp,
+                DhwStatus,
+                TargetDwhTemp,
+                ChStatus,
+                IndoorTemp,
+                TargetIndoorTemp,
+            ] {
+                self.read(val).await?;
+            }
+            delay_ms(2000).await;
+        }
+    }
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
         delay_ms(10).await;
         print!("Reading a sensor value {val:?}... ");
@@ -126,4 +142,19 @@ enum ReadReg {
     ChStatus = 52,
     IndoorTemp = 59,
     TargetIndoorTemp = 58,
+}
+
+#[derive(Debug)]
+enum MyError {
+    Other,
+}
+
+impl std::error::Error for MyError {}
+
+impl std::fmt::Display for MyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Other => write!(f, "Some other error occured!"),
+        }
+    }
 }
