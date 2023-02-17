@@ -19,7 +19,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let builder = tokio_serial::new(tty_path, 9600)
         .parity(tokio_serial::Parity::Even)
         .timeout(COMMAND_DELAY);
-    let port = SerialStream::open(&builder).unwrap();
+    let port = match SerialStream::open(&builder) {
+        Ok(s) => s,
+        Err(e) => panic!("Serial port must be {tty_path} :: {e}"),
+    };
     let ctx = rtu::connect_slave(port, slave).await?;
 
     let mut device = Device {
