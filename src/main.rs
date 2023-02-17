@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tty_path = "/dev/ttyUSB0";
     let slave = Slave(0x1);
 
-    let builder = tokio_serial::new(tty_path, 9600);
+    let builder = tokio_serial::new(tty_path, 9600).parity(tokio_serial::Parity::Even);
     let port = SerialStream::open(&builder).unwrap();
     /*
     instrument.write_registers(7005,[0x42E9, 0x42F1, 0x4067, 0x8204])
