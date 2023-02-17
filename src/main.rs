@@ -26,16 +26,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pump: Pump::default(),
         bus: ctx,
     };
-    use tokio::sync::oneshot;
 
-    let (tx, rx) = mpsc::channel(2);
-    let tx1 = tx.clone();
+    let (tx, rx) = mpsc::channel(10);
+
     tokio::spawn(async move {
-        keyboard(tx1).await;
+        keyboard(tx).await.unwrap();
     });
 
     tokio::spawn(async move {
-        device.looper(rx).await;
+        device.looper(rx).await.unwrap();
     });
 
     Ok(())
@@ -45,20 +44,39 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
     let mut buffer = Vec::new();
     loop {
-        println!("r to read");
-        let fut = reader.read_until(b'\n', &mut buffer).await;
-        println!("Input was: {:?}", buffer);
-        match buffer[0] {
-            b'r' => tx.send(Order::Get(Request::DhwTemp)),
+        println!("r to read, u +ch, d -ch");
+        let _fut = reader.read_until(b'\n', &mut buffer).await;
+        println!("Input was: {buffer:?}",);
+        if let Err(e) = match buffer[0] {
+            b'r' => tx.send(Order::Get(Request::DhwTemp)).await,
+            b'u' => tx.send(Order::Set(Instruction::ChUp)).await,
+            b'd' => tx.send(Order::Set(Instruction::ChDown)).await,
             _ => {
                 buffer.clear();
                 continue;
             }
+        } {
+            eprintln!("MPSC error {e:?}")
         };
-        buffer.clear();
     }
-    Ok(())
 }
+#[allow(dead_code)]
+#[derive(Debug, Default)]
+struct Pump {
+    flow_rate: u16,
+    // three_way: bool,
+    dhw_temp: i16,
+    return_temp: i16,
+    flow_temp: i16,
+    target_flow_temp: i16,
+    dhw_status: bool,
+    target_dwh_temp: i16,
+    ch_status: bool,
+    indoor_temp: i16,
+    target_indoor_temp: i16,
+}
+
+impl Pump {}
 
 #[allow(dead_code)]
 struct Device {
@@ -68,36 +86,53 @@ struct Device {
 
 impl Device {
     async fn looper(&mut self, mut rx: Receiver<Order>) -> Result<(), Box<dyn std::error::Error>> {
+        use ReadReg::*;
         loop {
-            if let Ok(recv) = rx.try_recv() {
-                match recv {
-                    Order::Get(request) => {
-                        println!("Received request {request:?}")
+            self.readall().await;
+            println!("Read vals");
+
+            match rx.try_recv().unwrap() {
+                // poll this
+                Order::Get(request) => {
+                    println!("Received request {request:?}");
+                    match request {
+                        Request::DhwTemp => self.read(DhwTemp).await?,
+                        Request::ChTemp => self.read(FlowTemp).await?,
                     }
-                    Order::Set(command) => todo!(),
                 }
-            };
-            use ReadReg::*;
-            for val in [
-                FlowRate,
-                // ThreeWay,
-                DhwTemp,
-                ReturnTemp,
-                FlowTemp,
-                TargetFlowTemp,
-                DhwStatus,
-                TargetDwhTemp,
-                ChStatus,
-                IndoorTemp,
-                TargetIndoorTemp,
-            ] {
-                self.read(val).await?;
+                Order::Set(command) => match command {
+                    // use set point write val increment (self.val += 1)
+                    Instruction::DhwUp => println!("Command process: {command:?}"),
+                    Instruction::DhwDown => println!("Command process: {command:?}"),
+                    Instruction::ChUp => println!("Command process: {command:?}"),
+                    Instruction::ChDown => println!("Command process: {command:?}"),
+                    Instruction::Dwh(_) => println!("Command process: {command:?}"),
+                    Instruction::Ch(_) => println!("Command process: {command:?}"),
+                },
             }
-            delay_ms(2000).await;
+        }
+    }
+
+    async fn readall(&mut self) {
+        use ReadReg::*;
+        for val in [
+            FlowRate,
+            // ThreeWay,
+            DhwTemp,
+            ReturnTemp,
+            FlowTemp,
+            TargetFlowTemp,
+            DhwStatus,
+            TargetDwhTemp,
+            ChStatus,
+            IndoorTemp,
+            TargetIndoorTemp,
+        ] {
+            self.read(val).await;
         }
     }
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
-        delay_ms(10).await;
+        delay_ms(100).await;
         print!("Reading a sensor value {val:?}... ");
         let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
         // println!("Sensor value is: {rsp:?} for {val:?}");
@@ -141,23 +176,6 @@ impl Device {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Default)]
-struct Pump {
-    flow_rate: u16,
-    // three_way: bool,
-    dhw_temp: i16,
-    return_temp: i16,
-    flow_temp: i16,
-    target_flow_temp: i16,
-    dhw_status: bool,
-    target_dwh_temp: i16,
-    ch_status: bool,
-    indoor_temp: i16,
-    target_indoor_temp: i16,
-}
-
-impl Pump {}
-
 #[derive(Debug, Copy, Clone)]
 enum ReadReg {
     FlowRate = 87,
@@ -173,6 +191,7 @@ enum ReadReg {
     TargetIndoorTemp = 58,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum MyError {
     Other,
@@ -188,6 +207,7 @@ impl std::fmt::Display for MyError {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum Instruction {
     DhwUp,
@@ -197,6 +217,8 @@ enum Instruction {
     Dwh(bool),
     Ch(bool),
 }
+
+#[allow(dead_code)]
 #[derive(Debug)]
 enum Request {
     DhwTemp,
