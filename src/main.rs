@@ -13,7 +13,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tty_path = "/dev/ttyUSB0";
     let slave = Slave(0x1);
 
-    let builder = tokio_serial::new(tty_path, 9600).parity(tokio_serial::Parity::Even);
+    let builder = tokio_serial::new(tty_path, 9600)
+        .parity(tokio_serial::Parity::Even)
+        .timeout(Duration::from_millis(100));
     let port = SerialStream::open(&builder).unwrap();
     let ctx = rtu::connect_slave(port, slave).await?;
     let mut device = Device {
@@ -35,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         TargetIndoorTemp,
     ] {
         device.read(val).await?;
-        delay_ms(100).await;
+        delay_ms(10).await;
     }
 
     Ok(())
