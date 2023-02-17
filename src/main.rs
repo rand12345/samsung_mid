@@ -2,6 +2,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration};
+use tokio_modbus::prelude::Writer;
 use tokio_modbus::{client::Context, prelude::Reader};
 
 async fn delay_ms(dur: u64) {
@@ -74,9 +75,29 @@ struct Pump {
     ch_status: bool,
     indoor_temp: i16,
     target_indoor_temp: i16,
+    set_target_indoor_temp: i16,
 }
 
-impl Pump {}
+impl Pump {
+    fn ch_up(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..40i16).contains(&self.target_indoor_temp) {
+            self.set_target_indoor_temp = self.target_indoor_temp + 1;
+            Some(self.set_target_indoor_temp)
+        } else {
+            None
+        }
+    }
+    fn ch_down(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..40i16).contains(&self.target_indoor_temp) {
+            self.set_target_indoor_temp = self.target_indoor_temp - 1;
+            Some(self.set_target_indoor_temp)
+        } else {
+            None
+        }
+    }
+}
 
 #[allow(dead_code)]
 struct Device {
@@ -104,8 +125,22 @@ impl Device {
                     // use set point write val increment (self.val += 1)
                     Instruction::DhwUp => println!("Command process: {command:?}"),
                     Instruction::DhwDown => println!("Command process: {command:?}"),
-                    Instruction::ChUp => println!("Command process: {command:?}"),
-                    Instruction::ChDown => println!("Command process: {command:?}"),
+                    Instruction::ChUp => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.ch_up() {
+                            self.write(WriteReg::IndoorTemp, val as u16).await;
+                        } else {
+                            eprintln!("Requested indoor temp (out of range)");
+                        };
+                    }
+                    Instruction::ChDown => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.ch_down() {
+                            self.write(WriteReg::IndoorTemp, val as u16).await;
+                        } else {
+                            eprintln!("Requested indoor temp (out of range)");
+                        };
+                    }
                     Instruction::Dwh(_) => println!("Command process: {command:?}"),
                     Instruction::Ch(_) => println!("Command process: {command:?}"),
                 },
@@ -130,6 +165,13 @@ impl Device {
         ] {
             self.read(val).await;
         }
+    }
+
+    async fn write(&mut self, reg: WriteReg, val: u16) -> Result<(), Box<dyn std::error::Error>> {
+        delay_ms(100).await;
+        self.bus.write_single_register(reg as u16, val).await?;
+        println!("Wrote {val} to {reg:?}");
+        Ok(())
     }
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
         delay_ms(100).await;
@@ -173,6 +215,15 @@ impl Device {
             }
         };
     }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone)]
+enum WriteReg {
+    IndoorTemp = 58,
+    DhwTemp = 74,
+    ChMode = 52,
+    DhwMode = 72,
 }
 
 #[allow(dead_code)]
