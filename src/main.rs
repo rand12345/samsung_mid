@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use ReadReg::*;
     for val in [
         FlowRate,
-        ThreeWay,
+        // ThreeWay,
         DhwTemp,
         ReturnTemp,
         FlowTemp,
@@ -55,7 +55,7 @@ impl Device {
 #[derive(Debug, Default)]
 struct Pump {
     flow_rate: u16,
-    three_way: bool,
+    // three_way: bool,
     dhw_temp: i16,
     return_temp: i16,
     flow_temp: i16,
@@ -72,7 +72,7 @@ impl Pump {}
 #[derive(Debug)]
 enum ReadReg {
     FlowRate = 87,
-    ThreeWay = 89,
+    // ThreeWay = 89,
     DhwTemp = 75,
     ReturnTemp = 65,
     FlowTemp = 66,
