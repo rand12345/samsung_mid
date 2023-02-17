@@ -49,9 +49,9 @@ struct Device {
 
 impl Device {
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Reading a sensor value {val:?}");
+        print!("Reading a sensor value {val:?}... ");
         let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
-        println!("Sensor value is: {rsp:?} for {:?}", ReadReg::FlowRate);
+        println!("Sensor value is: {rsp:?} for {val:?}");
         Ok(())
     }
 }
@@ -74,7 +74,7 @@ struct Pump {
 
 impl Pump {}
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum ReadReg {
     FlowRate = 87,
     // ThreeWay = 89,
