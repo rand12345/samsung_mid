@@ -1,9 +1,4 @@
-use tokio::time::{sleep, Duration};
-use tokio_modbus::client::Context;
-
-async fn delay_ms(dur: u64) {
-    sleep(Duration::from_millis(dur)).await;
-}
+use tokio_modbus::{client::Context, prelude::Reader};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,49 +12,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let builder = tokio_serial::new(tty_path, 9600).parity(tokio_serial::Parity::Even);
     let port = SerialStream::open(&builder).unwrap();
     let ctx = rtu::connect_slave(port, slave).await?;
-    /*
-    instrument.write_registers(7005,[0x42E9, 0x42F1, 0x4067, 0x8204])
-    */
     let mut device = Device {
         pump: Pump::default(),
         bus: ctx,
     };
-    // let
-    // delay_ms(500).await;
-    // println!("Sending init - enabling regs");
-    // device
-    //     .bus
-    //     .write_multiple_registers(7005, &[0x42E9, 0x42F1, 0x4067, 0x8204])
-    //     .await?;
-    println!("Reading a sensor value");
-    // delay_ms(500).await;
-    let rsp = device
-        .bus
-        .read_holding_registers(ReadReg::FlowRate as u16, 2)
-        .await?;
-    println!("Sensor value is: {rsp:?} for {:?}", ReadReg::FlowRate);
+    use ReadReg::*;
+    for val in [
+        FlowRate,
+        ThreeWay,
+        DhwTemp,
+        ReturnTemp,
+        FlowTemp,
+        TargetFlowTemp,
+        DhwStatus,
+        TargetDwhTemp,
+        ChStatus,
+        IndoorTemp,
+        TargetIndoorTemp,
+    ] {
+        device.read(val).await?;
+    }
 
     Ok(())
 }
 
+#[allow(dead_code)]
 struct Device {
     pump: Pump,
     bus: Context,
 }
 
+impl Device {
+    async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Reading a sensor value {val:?}");
+        let rsp = self.bus.read_holding_registers(val as u16, 2).await?;
+        println!("Sensor value is: {rsp:?} for {:?}", ReadReg::FlowRate);
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct Pump {
-    FlowRate: u16,
-    ThreeWay: bool,
-    DhwTemp: i16,
-    ReturnTemp: i16,
-    FlowTemp: i16,
-    TargetFlowTemp: i16,
-    DhwStatus: bool,
-    TargetDwhTemp: i16,
-    ChStatus: bool,
-    IndoorTemp: i16,
-    TargetIndoorTemp: i16,
+    flow_rate: u16,
+    three_way: bool,
+    dhw_temp: i16,
+    return_temp: i16,
+    flow_temp: i16,
+    target_flow_temp: i16,
+    dhw_status: bool,
+    target_dwh_temp: i16,
+    ch_status: bool,
+    indoor_temp: i16,
+    target_indoor_temp: i16,
 }
 
 impl Pump {}
