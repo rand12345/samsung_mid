@@ -1,4 +1,6 @@
 use tokio::io::AsyncBufReadExt;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::{sleep, Duration};
 use tokio_modbus::{client::Context, prelude::Reader};
 
@@ -24,18 +26,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pump: Pump::default(),
         bus: ctx,
     };
-    device.looper().await?;
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = mpsc::channel(2);
+    let tx1 = tx.clone();
+    tokio::spawn(async move {
+        keyboard(tx1).await;
+    });
+
+    tokio::spawn(async move {
+        device.looper(rx).await;
+    });
 
     Ok(())
 }
 
-async fn do_some_work(task_name: &str) -> Result<(), MyError> {
-    println!("This is task {}, doing some work", task_name);
+async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
     let mut buffer = Vec::new();
-
-    let fut = reader.read_until(b'\n', &mut buffer).await;
-    println!("Input was: {:?}", buffer);
+    loop {
+        println!("r to read");
+        let fut = reader.read_until(b'\n', &mut buffer).await;
+        println!("Input was: {:?}", buffer);
+        match buffer[0] {
+            b'r' => tx.send(Order::Get(Request::DhwTemp)),
+            _ => {
+                buffer.clear();
+                continue;
+            }
+        };
+        buffer.clear();
+    }
     Ok(())
 }
 
@@ -46,8 +67,16 @@ struct Device {
 }
 
 impl Device {
-    async fn looper(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn looper(&mut self, mut rx: Receiver<Order>) -> Result<(), Box<dyn std::error::Error>> {
         loop {
+            if let Ok(recv) = rx.try_recv() {
+                match recv {
+                    Order::Get(request) => {
+                        println!("Received request {request:?}")
+                    }
+                    Order::Set(command) => todo!(),
+                }
+            };
             use ReadReg::*;
             for val in [
                 FlowRate,
@@ -71,7 +100,7 @@ impl Device {
         delay_ms(10).await;
         print!("Reading a sensor value {val:?}... ");
         let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
-        println!("Sensor value is: {rsp:?} for {val:?}");
+        // println!("Sensor value is: {rsp:?} for {val:?}");
         self.decode(rsp[0], val);
         Ok(())
     }
@@ -157,4 +186,25 @@ impl std::fmt::Display for MyError {
             Self::Other => write!(f, "Some other error occured!"),
         }
     }
+}
+
+#[derive(Debug)]
+enum Instruction {
+    DhwUp,
+    DhwDown,
+    ChUp,
+    ChDown,
+    Dwh(bool),
+    Ch(bool),
+}
+#[derive(Debug)]
+enum Request {
+    DhwTemp,
+    ChTemp,
+}
+
+#[derive(Debug)]
+enum Order {
+    Get(Request),
+    Set(Instruction),
 }
