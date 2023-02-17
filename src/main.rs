@@ -40,6 +40,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         delay_ms(10).await;
     }
 
+    println!("data: {:#?}", device.pump);
+
     Ok(())
 }
 
@@ -54,7 +56,42 @@ impl Device {
         print!("Reading a sensor value {val:?}... ");
         let rsp = self.bus.read_holding_registers(val as u16, 1).await?;
         println!("Sensor value is: {rsp:?} for {val:?}");
+        self.decode(rsp[0], val);
         Ok(())
+    }
+    fn decode(&mut self, rsp: u16, val: ReadReg) {
+        match val {
+            ReadReg::FlowRate => {
+                self.pump.flow_rate = rsp;
+            }
+            ReadReg::DhwTemp => {
+                self.pump.dhw_temp = rsp as i16;
+            }
+            ReadReg::ReturnTemp => {
+                self.pump.return_temp = rsp as i16;
+            }
+            ReadReg::FlowTemp => {
+                self.pump.flow_temp = rsp as i16;
+            }
+            ReadReg::TargetFlowTemp => {
+                self.pump.target_flow_temp = rsp as i16;
+            }
+            ReadReg::DhwStatus => {
+                self.pump.dhw_status = rsp == 1;
+            }
+            ReadReg::TargetDwhTemp => {
+                self.pump.target_dwh_temp = rsp as i16;
+            }
+            ReadReg::ChStatus => {
+                self.pump.ch_status = rsp == 1;
+            }
+            ReadReg::IndoorTemp => {
+                self.pump.indoor_temp = rsp as i16;
+            }
+            ReadReg::TargetIndoorTemp => {
+                self.pump.target_indoor_temp = rsp as i16;
+            }
+        };
     }
 }
 
