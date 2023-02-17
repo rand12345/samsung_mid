@@ -45,13 +45,17 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
     let mut buffer = Vec::new();
     loop {
-        println!("r to read, u +ch, d -ch");
+        println!("'r' to read, 'u' +ch, 'd' -ch, 'p' +dwh, 'l' -dhw, 'c' ch mode, 'w' dhw mode");
         let _fut = reader.read_until(b'\n', &mut buffer).await;
         println!("Input was: {buffer:?}",);
         if let Err(e) = match buffer[0] {
             b'r' => tx.send(Order::Get(Request::DhwTemp)).await,
             b'u' => tx.send(Order::Set(Instruction::ChUp)).await,
             b'd' => tx.send(Order::Set(Instruction::ChDown)).await,
+            b'p' => tx.send(Order::Set(Instruction::DhwUp)).await,
+            b'l' => tx.send(Order::Set(Instruction::DhwDown)).await,
+            b'c' => tx.send(Order::Set(Instruction::Ch)).await,
+            b'w' => tx.send(Order::Set(Instruction::Dwh)).await,
             _ => {
                 buffer.clear();
                 continue;
@@ -61,9 +65,18 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
         };
     }
 }
+
+#[derive(Debug, Default)]
+enum Mode {
+    Dhw,
+    #[default]
+    Ch,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Default)]
 struct Pump {
+    mode: Mode,
     flow_rate: u16,
     // three_way: bool,
     dhw_temp: i16,
@@ -76,9 +89,13 @@ struct Pump {
     indoor_temp: i16,
     target_indoor_temp: i16,
     set_target_indoor_temp: i16,
+    set_dhw_temp: i16,
 }
 
 impl Pump {
+    fn set_mode(&mut self, val: Mode) {
+        self.mode = val
+    }
     fn ch_up(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..40i16).contains(&self.target_indoor_temp) {
@@ -97,6 +114,24 @@ impl Pump {
             None
         }
     }
+    fn dhw_up(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..80i16).contains(&self.set_dhw_temp) {
+            self.set_dhw_temp = self.dhw_temp + 1;
+            Some(self.set_dhw_temp)
+        } else {
+            None
+        }
+    }
+    fn dhw_down(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..80i16).contains(&self.set_dhw_temp) {
+            self.set_dhw_temp = self.dhw_temp - 1;
+            Some(self.set_dhw_temp)
+        } else {
+            None
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -109,7 +144,7 @@ impl Device {
     async fn looper(&mut self, mut rx: Receiver<Order>) -> Result<(), Box<dyn std::error::Error>> {
         use ReadReg::*;
         loop {
-            self.readall().await;
+            self.readall().await?;
             println!("Read vals");
 
             match rx.try_recv().unwrap() {
@@ -123,12 +158,26 @@ impl Device {
                 }
                 Order::Set(command) => match command {
                     // use set point write val increment (self.val += 1)
-                    Instruction::DhwUp => println!("Command process: {command:?}"),
-                    Instruction::DhwDown => println!("Command process: {command:?}"),
+                    Instruction::DhwUp => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.dhw_up() {
+                            self.write(WriteReg::DhwTemp, val as u16).await?;
+                        } else {
+                            eprintln!("Requested hot water temp (out of range)");
+                        };
+                    }
+                    Instruction::DhwDown => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.dhw_down() {
+                            self.write(WriteReg::DhwTemp, val as u16).await?;
+                        } else {
+                            eprintln!("Requested hot water temp (out of range)");
+                        };
+                    }
                     Instruction::ChUp => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.ch_up() {
-                            self.write(WriteReg::IndoorTemp, val as u16).await;
+                            self.write(WriteReg::IndoorTemp, val as u16).await?;
                         } else {
                             eprintln!("Requested indoor temp (out of range)");
                         };
@@ -136,19 +185,27 @@ impl Device {
                     Instruction::ChDown => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.ch_down() {
-                            self.write(WriteReg::IndoorTemp, val as u16).await;
+                            self.write(WriteReg::IndoorTemp, val as u16).await?;
                         } else {
                             eprintln!("Requested indoor temp (out of range)");
                         };
                     }
-                    Instruction::Dwh(_) => println!("Command process: {command:?}"),
-                    Instruction::Ch(_) => println!("Command process: {command:?}"),
+                    Instruction::Dwh => {
+                        println!("Command process: {command:?}");
+                        self.pump.set_mode(Mode::Dhw);
+                        self.write(WriteReg::DhwMode, 1).await?
+                    }
+                    Instruction::Ch => {
+                        println!("Command process: {command:?}");
+                        self.pump.set_mode(Mode::Ch);
+                        self.write(WriteReg::ChMode, 1).await?
+                    }
                 },
             }
         }
     }
 
-    async fn readall(&mut self) {
+    async fn readall(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         use ReadReg::*;
         for val in [
             FlowRate,
@@ -163,8 +220,9 @@ impl Device {
             IndoorTemp,
             TargetIndoorTemp,
         ] {
-            self.read(val).await;
+            self.read(val).await?;
         }
+        Ok(())
     }
 
     async fn write(&mut self, reg: WriteReg, val: u16) -> Result<(), Box<dyn std::error::Error>> {
@@ -265,8 +323,8 @@ enum Instruction {
     DhwDown,
     ChUp,
     ChDown,
-    Dwh(bool),
-    Ch(bool),
+    Dwh,
+    Ch,
 }
 
 #[allow(dead_code)]
