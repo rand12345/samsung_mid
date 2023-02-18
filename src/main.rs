@@ -49,6 +49,7 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     let mut reader = tokio::io::BufReader::new(tokio::io::stdin());
     let mut buffer = Vec::new();
     loop {
+        buffer.clear();
         println!(
             "'r' to read temps, 'u' +ch, 'd' -ch, 'p' +dwh, 'l' -dhw, 'c' ch mode, 'w' dhw mode"
         );
