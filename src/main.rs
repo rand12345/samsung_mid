@@ -109,7 +109,7 @@ impl Pump {
     fn flow_up(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.flow_temp) {
-            self.set_flow_temp = self.target_flow_temp + 1;
+            self.set_flow_temp = self.target_flow_temp + 50;
             Some(self.set_flow_temp)
         } else {
             None
@@ -118,7 +118,7 @@ impl Pump {
     fn flow_down(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.flow_temp) {
-            self.set_flow_temp = self.target_flow_temp - 1;
+            self.set_flow_temp = self.target_flow_temp - 50;
             Some(self.set_flow_temp)
         } else {
             None
@@ -127,7 +127,7 @@ impl Pump {
     fn ch_up(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.target_indoor_temp) {
-            self.set_target_indoor_temp = self.target_indoor_temp + 1;
+            self.set_target_indoor_temp = self.target_indoor_temp + 50;
             Some(self.set_target_indoor_temp)
         } else {
             None
@@ -136,7 +136,7 @@ impl Pump {
     fn ch_down(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.target_indoor_temp) {
-            self.set_target_indoor_temp = self.target_indoor_temp - 1;
+            self.set_target_indoor_temp = self.target_indoor_temp - 50;
             Some(self.set_target_indoor_temp)
         } else {
             None
@@ -145,7 +145,7 @@ impl Pump {
     fn dhw_up(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.set_dhw_temp) {
-            self.set_dhw_temp = self.dhw_temp + 1;
+            self.set_dhw_temp = self.dhw_temp + 50;
             Some(self.set_dhw_temp)
         } else {
             None
@@ -154,7 +154,7 @@ impl Pump {
     fn dhw_down(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.set_dhw_temp) {
-            self.set_dhw_temp = self.dhw_temp - 1;
+            self.set_dhw_temp = self.dhw_temp - 50;
             Some(self.set_dhw_temp)
         } else {
             None
