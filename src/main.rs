@@ -51,12 +51,14 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     loop {
         buffer.clear();
         println!(
-            "'r' to read temps, 'u' +ch, 'd' -ch, 'p' +dwh, 'l' -dhw, 'c' ch mode, 'w' dhw mode"
+            "'r' to read temps, '1' flowT up, '2' flowT down, 'u' +ch, 'd' -ch, 'p' +dwh, 'l' -dhw, 'c' ch mode, 'w' dhw mode"
         );
         let _fut = reader.read_until(b'\n', &mut buffer).await;
         println!("Input was: {buffer:?}",);
         if let Err(e) = match buffer[0] {
             b'r' => tx.send(Order::Get(Request::Temps)).await,
+            b'1' => tx.send(Order::Set(Instruction::FlowUp)).await,
+            b'2' => tx.send(Order::Set(Instruction::FlowDown)).await,
             b'u' => tx.send(Order::Set(Instruction::ChUp)).await,
             b'd' => tx.send(Order::Set(Instruction::ChDown)).await,
             b'p' => tx.send(Order::Set(Instruction::DhwUp)).await,
@@ -97,11 +99,30 @@ struct Pump {
     target_indoor_temp: i16,
     set_target_indoor_temp: i16,
     set_dhw_temp: i16,
+    set_flow_temp: i16,
 }
 
 impl Pump {
     fn set_mode(&mut self, val: Mode) {
         self.mode = val
+    }
+    fn flow_up(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..800i16).contains(&self.flow_temp) {
+            self.set_flow_temp = self.target_indoor_temp + 1;
+            Some(self.set_flow_temp)
+        } else {
+            None
+        }
+    }
+    fn flow_down(&mut self) -> Option<i16> {
+        // implement bounds checking
+        if (0..800i16).contains(&self.flow_temp) {
+            self.set_flow_temp = self.target_indoor_temp - 1;
+            Some(self.set_flow_temp)
+        } else {
+            None
+        }
     }
     fn ch_up(&mut self) -> Option<i16> {
         // implement bounds checking
@@ -221,6 +242,22 @@ impl Device {
                         self.write(WriteReg::DhwMode, 0).await?; // not sure if needed
                         self.pump.set_mode(Mode::Ch);
                     }
+                    Instruction::FlowUp => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.flow_up() {
+                            self.write(WriteReg::FlowTemp, val as u16).await?;
+                        } else {
+                            eprintln!("Requested indoor temp (out of range)");
+                        };
+                    }
+                    Instruction::FlowDown => {
+                        println!("Command process: {command:?}");
+                        if let Some(val) = self.pump.flow_down() {
+                            self.write(WriteReg::FlowTemp, val as u16).await?;
+                        } else {
+                            eprintln!("Requested indoor temp (out of range)");
+                        };
+                    }
                 },
             }
         }
@@ -307,6 +344,7 @@ enum WriteReg {
     DhwTemp = 74,
     ChMode = 52,
     DhwMode = 72,
+    FlowTemp = 68,
 }
 
 #[allow(dead_code)]
@@ -344,6 +382,8 @@ impl std::fmt::Display for MyError {
 #[allow(dead_code)]
 #[derive(Debug)]
 enum Instruction {
+    FlowUp,
+    FlowDown,
     DhwUp,
     DhwDown,
     ChUp,
