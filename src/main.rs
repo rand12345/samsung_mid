@@ -109,7 +109,7 @@ impl Pump {
     fn flow_up(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.flow_temp) {
-            self.set_flow_temp = self.target_indoor_temp + 1;
+            self.set_flow_temp = self.target_flow_temp + 1;
             Some(self.set_flow_temp)
         } else {
             None
@@ -118,7 +118,7 @@ impl Pump {
     fn flow_down(&mut self) -> Option<i16> {
         // implement bounds checking
         if (0..800i16).contains(&self.flow_temp) {
-            self.set_flow_temp = self.target_indoor_temp - 1;
+            self.set_flow_temp = self.target_flow_temp - 1;
             Some(self.set_flow_temp)
         } else {
             None
