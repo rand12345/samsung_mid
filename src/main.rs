@@ -179,6 +179,7 @@ impl Device {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.dhw_up() {
                             self.write(WriteReg::DhwTemp, val as u16).await?;
+                            println!("Sending DhwUP: Reg {:?} {}", WriteReg::DhwTemp, val as u16)
                         } else {
                             eprintln!("Requested hot water temp (out of range)");
                         };
