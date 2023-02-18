@@ -39,7 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         device.looper(rx).await.unwrap();
     });
-
+    loop {
+        sleep(COMMAND_DELAY).await;
+    }
     Ok(())
 }
 
