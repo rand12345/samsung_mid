@@ -104,7 +104,7 @@ impl Pump {
     }
     fn ch_up(&mut self) -> Option<i16> {
         // implement bounds checking
-        if (0..80i16).contains(&self.target_indoor_temp) {
+        if (0..800i16).contains(&self.target_indoor_temp) {
             self.set_target_indoor_temp = self.target_indoor_temp + 1;
             Some(self.set_target_indoor_temp)
         } else {
@@ -113,7 +113,7 @@ impl Pump {
     }
     fn ch_down(&mut self) -> Option<i16> {
         // implement bounds checking
-        if (0..80i16).contains(&self.target_indoor_temp) {
+        if (0..800i16).contains(&self.target_indoor_temp) {
             self.set_target_indoor_temp = self.target_indoor_temp - 1;
             Some(self.set_target_indoor_temp)
         } else {
@@ -122,7 +122,7 @@ impl Pump {
     }
     fn dhw_up(&mut self) -> Option<i16> {
         // implement bounds checking
-        if (0..80i16).contains(&self.set_dhw_temp) {
+        if (0..800i16).contains(&self.set_dhw_temp) {
             self.set_dhw_temp = self.dhw_temp + 1;
             Some(self.set_dhw_temp)
         } else {
@@ -131,7 +131,7 @@ impl Pump {
     }
     fn dhw_down(&mut self) -> Option<i16> {
         // implement bounds checking
-        if (0..80i16).contains(&self.set_dhw_temp) {
+        if (0..800i16).contains(&self.set_dhw_temp) {
             self.set_dhw_temp = self.dhw_temp - 1;
             Some(self.set_dhw_temp)
         } else {
