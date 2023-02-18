@@ -226,6 +226,8 @@ impl Device {
     }
 
     async fn readall(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // delay refresh
+        sleep(Duration::from_secs(1)).await;
         use ReadReg::*;
         for val in [
             FlowRate,
