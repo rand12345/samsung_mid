@@ -42,7 +42,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         sleep(COMMAND_DELAY).await;
     }
-    Ok(())
 }
 
 async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
@@ -51,14 +50,14 @@ async fn keyboard(tx: Sender<Order>) -> Result<(), MyError> {
     loop {
         buffer.clear();
         println!(
-            "'r' to read temps, '1' flowT up, '2' flowT down, 'u' +ch, 'd' -ch, 'p' +dwh, 'l' -dhw, 'c' ch mode, 'w' dhw mode"
+            "'r' to read temps, '1' waterloopT up, '2' waterloopT down, 'u' +IndoorTemp, 'd' -IndoorTemp, 'p' +HotWaterSetTemp, 'l' -HotWaterSetTemp, 'c' ch mode, 'w' dhw mode"
         );
         let _fut = reader.read_until(b'\n', &mut buffer).await;
         println!("Input was: {buffer:?}",);
         if let Err(e) = match buffer[0] {
             b'r' => tx.send(Order::Get(Request::Temps)).await,
-            b'1' => tx.send(Order::Set(Instruction::FlowUp)).await,
-            b'2' => tx.send(Order::Set(Instruction::FlowDown)).await,
+            b'1' => tx.send(Order::Set(Instruction::WaterOutUp)).await,
+            b'2' => tx.send(Order::Set(Instruction::WaterOutDown)).await,
             b'u' => tx.send(Order::Set(Instruction::ChUp)).await,
             b'd' => tx.send(Order::Set(Instruction::ChDown)).await,
             b'p' => tx.send(Order::Set(Instruction::DhwUp)).await,
@@ -171,6 +170,34 @@ struct Device {
 impl Device {
     async fn looper(&mut self, mut rx: Receiver<Order>) -> Result<(), Box<dyn std::error::Error>> {
         use ReadReg::*;
+
+        /*
+            Init unit
+            # map Flow rate (l/min), OutdoorT, 3-way valve 0=CH 1=DHW, Compressor controll %, Compressor freq (Hz), Immersion heater status
+            src https://github.com/openenergymonitor/emonhub/blob/master/src/interfacers/EmonHubMinimalModbusInterfacer.py
+        */
+
+        // println!("Setting extra registers");
+        // self.write_multiple(7005, &[0x42E9, 0x8204, 0x4067, 0x42F1, 0x8238, 0x4087])
+        //     .await?;
+        {
+            println!("Reading OffOn state");
+            if matches!(self.bus.read_holding_registers(52, 1).await?[0], 0) {
+                println!("Pump off, turning on");
+                self.bus.write_single_register(52, 1).await?;
+                if matches!(self.bus.read_holding_registers(52, 1).await?[0], 1) {
+                    println!("Pump On");
+                } else {
+                    println!("Pump still off")
+                }
+            } else {
+                println!("Pump already on")
+            }
+            println!("Setting pump mode to heat - testing only");
+            self.bus.write_single_register(53, 4).await?;
+            println!("Set pump mode to heat - testings only");
+        }
+
         loop {
             self.readall().await?;
             println!("Read vals");
@@ -185,13 +212,13 @@ impl Device {
                     println!("Received request {request:?}");
                     match request {
                         Request::Temps => {
-                            self.read(DhwTemp).await?;
-                            self.read(TargetDwhTemp).await?;
-                            self.read(FlowTemp).await?;
-                            self.read(TargetFlowTemp).await?;
+                            self.read(HotWaterTemp).await?;
+                            self.read(HotWaterSetTemp).await?;
+                            self.read(WaterOutTemp).await?;
+                            self.read(WaterOutSetTemp).await?;
                             self.read(IndoorTemp).await?;
                             self.read(TargetIndoorTemp).await?;
-                            self.read(ReturnTemp).await?;
+                            self.read(WaterInTemp).await?;
                         }
                     }
                 }
@@ -200,8 +227,12 @@ impl Device {
                     Instruction::DhwUp => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.dhw_up() {
-                            self.write(WriteReg::DhwTemp, val as u16).await?;
-                            println!("Sending DhwUP: Reg {:?} {}", WriteReg::DhwTemp, val as u16)
+                            self.write(WriteReg::HotWaterSetTemp, val as u16).await?;
+                            println!(
+                                "Sending DhwUP: Reg {:?} {}",
+                                WriteReg::HotWaterSetTemp,
+                                val as u16
+                            )
                         } else {
                             eprintln!("Requested hot water temp (out of range)");
                         };
@@ -209,7 +240,7 @@ impl Device {
                     Instruction::DhwDown => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.dhw_down() {
-                            self.write(WriteReg::DhwTemp, val as u16).await?;
+                            self.write(WriteReg::HotWaterSetTemp, val as u16).await?;
                         } else {
                             eprintln!("Requested hot water temp (out of range)");
                         };
@@ -232,28 +263,28 @@ impl Device {
                     }
                     Instruction::Dwh => {
                         println!("Command process: {command:?}");
-                        self.write(WriteReg::DhwMode, 1).await?;
-                        self.write(WriteReg::ChMode, 0).await?; // not sure if needed
+                        self.write(WriteReg::HotWaterOffOn, 1).await?;
+                        self.write(WriteReg::OffOn, 0).await?; // not sure if needed
                         self.pump.set_mode(Mode::Dhw);
                     }
                     Instruction::Ch => {
                         println!("Command process: {command:?}");
-                        self.write(WriteReg::ChMode, 1).await?;
-                        self.write(WriteReg::DhwMode, 0).await?; // not sure if needed
+                        self.write(WriteReg::OffOn, 1).await?;
+                        self.write(WriteReg::HotWaterOffOn, 0).await?; // not sure if needed
                         self.pump.set_mode(Mode::Ch);
                     }
-                    Instruction::FlowUp => {
+                    Instruction::WaterOutUp => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.flow_up() {
-                            self.write(WriteReg::FlowTemp, val as u16).await?;
+                            self.write(WriteReg::WaterOutSetTemp, val as u16).await?;
                         } else {
                             eprintln!("Requested indoor temp (out of range)");
                         };
                     }
-                    Instruction::FlowDown => {
+                    Instruction::WaterOutDown => {
                         println!("Command process: {command:?}");
                         if let Some(val) = self.pump.flow_down() {
-                            self.write(WriteReg::FlowTemp, val as u16).await?;
+                            self.write(WriteReg::WaterOutSetTemp, val as u16).await?;
                         } else {
                             eprintln!("Requested indoor temp (out of range)");
                         };
@@ -268,15 +299,15 @@ impl Device {
         sleep(Duration::from_secs(1)).await;
         use ReadReg::*;
         for val in [
-            FlowRate,
+            // FlowRate,
             // ThreeWay,
-            DhwTemp,
-            ReturnTemp,
-            FlowTemp,
-            TargetFlowTemp,
-            DhwStatus,
-            TargetDwhTemp,
-            ChStatus,
+            HotWaterTemp,
+            WaterInTemp,
+            WaterOutTemp,
+            WaterOutSetTemp,
+            HotWaterOffOn,
+            HotWaterSetTemp,
+            OffOn,
             IndoorTemp,
             TargetIndoorTemp,
         ] {
@@ -291,6 +322,17 @@ impl Device {
         println!("Wrote {val} to {reg:?}");
         Ok(())
     }
+    async fn write_multiple(
+        &mut self,
+        reg: u16,
+        val: &[u16],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        sleep(COMMAND_DELAY).await;
+        // elf._rs485.write_registers(7005,[0x42E9, 0x8204, 0x4067, 0x42F1, 0x8238, 0x4087])
+        self.bus.write_multiple_registers(reg, val).await?;
+        println!("Wrote {val:02x?} to {reg:?}");
+        Ok(())
+    }
     async fn read(&mut self, val: ReadReg) -> Result<(), Box<dyn std::error::Error>> {
         sleep(COMMAND_DELAY).await;
         print!("Reading a sensor value {val:?}: ");
@@ -301,29 +343,29 @@ impl Device {
     }
     fn decode(&mut self, rsp: u16, val: ReadReg) {
         match val {
-            ReadReg::FlowRate => {
-                self.pump.flow_rate = rsp;
-            }
-            ReadReg::DhwTemp => {
+            // ReadReg::FlowRate => {
+            //     self.pump.flow_rate = rsp;
+            // }
+            ReadReg::HotWaterTemp => {
                 self.pump.dhw_temp = rsp as i16;
             }
-            ReadReg::ReturnTemp => {
+            ReadReg::WaterInTemp => {
                 self.pump.return_temp = rsp as i16;
             }
-            ReadReg::FlowTemp => {
+            ReadReg::WaterOutTemp => {
                 self.pump.flow_temp = rsp as i16;
             }
-            ReadReg::TargetFlowTemp => {
+            ReadReg::WaterOutSetTemp => {
                 self.pump.target_flow_temp = rsp as i16;
             }
-            ReadReg::DhwStatus => {
+            ReadReg::HotWaterOffOn => {
                 // self.pump.dhw_status = rsp == 1;
                 self.pump.mode = Mode::Dhw;
             }
-            ReadReg::TargetDwhTemp => {
+            ReadReg::HotWaterSetTemp => {
                 self.pump.target_dwh_temp = rsp as i16;
             }
-            ReadReg::ChStatus => {
+            ReadReg::OffOn => {
                 // self.pump.ch_status = rsp == 1;
                 self.pump.mode = Mode::Ch;
             }
@@ -333,34 +375,49 @@ impl Device {
             ReadReg::TargetIndoorTemp => {
                 self.pump.target_indoor_temp = rsp as i16;
             }
+            _ => unimplemented!(),
         };
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
+enum MessageSetId {}
+
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone)]
 enum WriteReg {
-    IndoorTemp = 58,
-    DhwTemp = 74,
-    ChMode = 52,
-    DhwMode = 72,
-    FlowTemp = 68,
+    UnitType = 51,
+    OffOn = 52,              // 0: Off, 1: On
+    AirConditionerMode = 53, //0: Auto, 1: Cool, 2: Dry, 3: Fan, 4: Heat, 21: Cool Storage, 24: Heat Storage
+    IndoorTemp = 58,         // Not HW HP!
+    WaterOutSetTemp = 68,
+    HotWaterOffOn = 72,
+    HotWaterMode = 73, // 0: Eco, 1: Standard, 2: Power, 3: Force (for the EHS only)
+    HotWaterSetTemp = 74,
+    QuietControl = 78, // 0: Normal, 1: SIlent
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 enum ReadReg {
-    FlowRate = 87,
-    // ThreeWay = 89,
-    DhwTemp = 75,
-    ReturnTemp = 65,
-    FlowTemp = 66,
-    TargetFlowTemp = 68,
-    DhwStatus = 72,
-    TargetDwhTemp = 74,
-    ChStatus = 52,
-    IndoorTemp = 59,
+    CommsStatus = 50,        //b0: Exist, b1: Type OK, b2: Ready, b3: Communication error
+    OffOn = 52,              // 0: Off, 1: On
+    AirConditionerMode = 53, //0: Auto, 1: Cool, 2: Dry, 3: Fan, 4: Heat, 21: Cool Storage, 24: Heat Storage
     TargetIndoorTemp = 58,
+    IndoorTemp = 59,
+    ErrorCode = 64, // 0: No Error, 100-999: Error Code
+    ThreeWay = 89,
+    WaterInTemp = 65,
+    WaterOutTemp = 66,
+    WaterOutSetTemp = 68,
+    HotWaterOffOn = 72,   // 0: Off, 1: On
+    HotWaterMode = 73,    // 0: Eco, 1: Standard, 2: Power, 3: Force (for the EHS only)
+    HotWaterSetTemp = 74, // Celsius value x10
+    HotWaterTemp = 75,    // Celsius value x 10
+    QuietControl = 78,    // 0: Normal, 1: Silent
+    AwayFunction = 79,
+    // FlowRate = 87,
 }
 
 #[allow(dead_code)]
@@ -382,8 +439,8 @@ impl std::fmt::Display for MyError {
 #[allow(dead_code)]
 #[derive(Debug)]
 enum Instruction {
-    FlowUp,
-    FlowDown,
+    WaterOutUp,
+    WaterOutDown,
     DhwUp,
     DhwDown,
     ChUp,
